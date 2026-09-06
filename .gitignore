@@ -1,0 +1,11 @@
+node_modules
+.next
+out
+.env
+.env.local
+*.db
+*.db-journal
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
