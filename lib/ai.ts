@@ -11,6 +11,16 @@ const forecastItems = (products: Product[], multiplier: number, priceMultiplier:
     return { id: `forecast-${product.id}`, productName: product.name, quantity, unitPrice, subtotal: quantity * unitPrice };
   });
 
+const fitItemsToBudget = (items: PlannerItem[], budget: number): PlannerItem[] => {
+  let remaining = Math.max(0, budget);
+  return items.flatMap((item) => {
+    const affordableQuantity = Math.min(item.quantity, Math.floor(remaining / item.unitPrice));
+    if (affordableQuantity <= 0) return [];
+    remaining -= affordableQuantity * item.unitPrice;
+    return [{ ...item, quantity: affordableQuantity, subtotal: affordableQuantity * item.unitPrice }];
+  });
+};
+
 export function generateForecastCards(state: AppState): PlannerCard[] {
   const products = lowStockProducts(state.products).filter((product) => product.planningMethod === "FORECAST_AI");
   const fallbackProducts = state.products.filter((product) => product.planningMethod === "FORECAST_AI").slice(0, 2);
@@ -20,7 +30,7 @@ export function generateForecastCards(state: AppState): PlannerCard[] {
     { cardType: "BALANCED", label: "Balanced", badge: "Average SRP", multiplier: 1, priceMultiplier: 1, supplierName: "Makati Public Market", reason: "Balances tomorrow’s expected demand with a comfortable cash buffer." },
     { cardType: "PREMIUM", label: "Premium", badge: "Highest SRP", multiplier: 1.3, priceMultiplier: 1.12, supplierName: "FreshLane Select", reason: "Adds a little extra safety stock for high-demand windows and better quality." },
   ].map((card) => {
-    const items = forecastItems(selected, card.multiplier, card.priceMultiplier);
+    const items = fitItemsToBudget(forecastItems(selected, card.multiplier, card.priceMultiplier), availableBusinessFunds(state));
     return { id: `forecast-${card.cardType}`, source: "FORECAST_AI" as const, cardType: card.cardType, label: card.label, badge: card.badge, totalCost: items.reduce((sum, item) => sum + item.subtotal, 0), supplierName: card.supplierName, reason: card.reason, items };
   });
   return cards;
@@ -39,7 +49,7 @@ export function generateVmiCards(state: AppState): PlannerCard[] {
         const unitPrice = vendorProduct.vendorPrice ?? vendorProduct.costPrice;
         items.push({ id: `vmi-${vendor.id}-${need.id}`, productName: need.name, quantity, unitPrice, subtotal: quantity * unitPrice, supplierName: vendor.businessName });
       }
-      return { vendor, items };
+      return { vendor, items: fitItemsToBudget(items, availableBusinessFunds(state)) };
     })
     .filter(({ items }) => items.length > 0)
     .map(({ vendor, items }) => ({
