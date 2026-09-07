@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { generateGeminiText, GeminiRequestError } from "@/lib/gemini";
 
 /**
  * Optional Gemini bridge for the prototype. The browser never receives the
@@ -7,21 +8,22 @@ import { NextResponse } from "next/server";
  */
 export async function POST(request: Request) {
   const { prompt, fallback } = await request.json().catch(() => ({ prompt: "", fallback: "" }));
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || !prompt) {
+  if (!prompt) {
     return NextResponse.json({ mode: "fallback", text: fallback || "Demo AI fallback is active. Add GEMINI_API_KEY to enable optional Gemini copy." });
   }
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      cache: "no-store",
-    });
-    if (!response.ok) throw new Error("Gemini request failed");
-    const data = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const primaryModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+    const fallbackModel = process.env.GEMINI_FALLBACK_MODEL || "gemini-3.6-flash";
+    let text: string | null;
+    try {
+      text = await generateGeminiText(prompt, { model: primaryModel });
+    } catch (error) {
+      const canTryFallback = error instanceof GeminiRequestError && [404, 429, 500, 502, 503, 504].includes(error.status) && fallbackModel !== primaryModel;
+      if (!canTryFallback) throw error;
+      console.warn(`Gemini text primary model ${primaryModel} unavailable; trying ${fallbackModel}`);
+      text = await generateGeminiText(prompt, { model: fallbackModel });
+    }
     return NextResponse.json({ mode: "gemini", text: text || "Gemini returned no text." });
   } catch {
     return NextResponse.json({ mode: "fallback", text: fallback || "Gemini was unavailable, so GLock kept the deterministic demo explanation." });
