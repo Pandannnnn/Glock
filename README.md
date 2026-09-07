@@ -32,7 +32,7 @@ Use the **Reset** control in the header to restore the client-side seeded mercha
 
 ## Optional environment variable
 
-`GEMINI_API_KEY` enables the server-side bridge at `/api/ai`. Without it, GLock uses deterministic rule-based fallback recommendations and remains usable offline.
+`GEMINI_API_KEY` enables the server-side Gemini bridge at `/api/ai` and Gemini-generated Forecast AI restock cards at `/api/ai/forecast`. Without it, GLock uses deterministic rule-based fallback recommendations and remains usable offline. `GEMINI_MODEL` is optional and defaults to `gemini-3.5-flash-lite`; `GEMINI_FALLBACK_MODEL` defaults to `gemini-3.6-flash` when the primary model is unavailable or busy.
 
 ## CSV format
 
