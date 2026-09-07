@@ -1,15 +1,9 @@
-import type { AppState, PlannerCard, PlannerItem, Product } from "@/lib/types";
-import { availableBusinessFunds, lowStockProducts, peso, todaySales } from "@/lib/format";
+import { buildDtiForecastCards, type ForecastQuantityRecommendation } from "@/lib/dti-srp";
+import type { AppState, DtiSrpTier, PlannerCard, PlannerItem, Product } from "@/lib/types";
+import { availableBusinessPurchasingFunds, lowStockProducts, peso, todaySales, todaySalesByPaymentMethod } from "@/lib/format";
 
-const replenishQuantity = (product: Product, multiplier = 1) =>
-  Math.max(2, Math.ceil((product.lowStockThreshold * 2 - product.stock) * multiplier));
-
-const forecastItems = (products: Product[], multiplier: number, priceMultiplier: number): PlannerItem[] =>
-  products.map((product) => {
-    const quantity = replenishQuantity(product, multiplier);
-    const unitPrice = Math.round(product.costPrice * priceMultiplier);
-    return { id: `forecast-${product.id}`, productName: product.name, quantity, unitPrice, subtotal: quantity * unitPrice };
-  });
+const replenishQuantity = (product: Product) =>
+  Math.max(2, Math.ceil(product.lowStockThreshold * 2 - product.stock));
 
 const fitItemsToBudget = (items: PlannerItem[], budget: number): PlannerItem[] => {
   let remaining = Math.max(0, budget);
@@ -22,18 +16,36 @@ const fitItemsToBudget = (items: PlannerItem[], budget: number): PlannerItem[] =
 };
 
 export function generateForecastCards(state: AppState): PlannerCard[] {
-  const products = lowStockProducts(state.products).filter((product) => product.planningMethod === "FORECAST_AI");
-  const fallbackProducts = state.products.filter((product) => product.planningMethod === "FORECAST_AI").slice(0, 2);
-  const selected = products.length ? products : fallbackProducts;
-  const cards = [
-    { cardType: "LOWEST_SRP", label: "Budget", badge: "Lowest SRP", multiplier: 0.75, priceMultiplier: 0.92, supplierName: "Divisoria Wholesale Hub", reason: "Keeps more funds available while covering the most urgent low-stock items." },
-    { cardType: "BALANCED", label: "Balanced", badge: "Average SRP", multiplier: 1, priceMultiplier: 1, supplierName: "Makati Public Market", reason: "Balances tomorrow’s expected demand with a comfortable cash buffer." },
-    { cardType: "PREMIUM", label: "Premium", badge: "Highest SRP", multiplier: 1.3, priceMultiplier: 1.12, supplierName: "FreshLane Select", reason: "Adds a little extra safety stock for high-demand windows and better quality." },
-  ].map((card) => {
-    const items = fitItemsToBudget(forecastItems(selected, card.multiplier, card.priceMultiplier), availableBusinessFunds(state));
-    return { id: `forecast-${card.cardType}`, source: "FORECAST_AI" as const, cardType: card.cardType, label: card.label, badge: card.badge, totalCost: items.reduce((sum, item) => sum + item.subtotal, 0), supplierName: card.supplierName, reason: card.reason, items };
-  });
-  return cards;
+  const forecastProducts = state.products.filter((product) => product.planningMethod === "FORECAST_AI");
+  const lowStock = lowStockProducts(forecastProducts);
+  const recentUnitsSold = state.transactions.reduce<Record<string, number>>((result, transaction) => {
+    if (transaction.paymentStatus !== "PAID") return result;
+    transaction.items.forEach((item) => {
+      if (item.productId) result[item.productId] = (result[item.productId] ?? 0) + item.quantity;
+    });
+    return result;
+  }, {});
+  const demandRanked = [...forecastProducts].sort((a, b) => (recentUnitsSold[b.id] ?? 0) - (recentUnitsSold[a.id] ?? 0));
+  const selected = Array.from(new Map([...lowStock, ...demandRanked].map((product) => [product.id, product])).values()).slice(0, 3);
+  const budget = availableBusinessPurchasingFunds(state);
+  const baseItems = selected.map((product) => ({
+    id: `forecast-${product.id}`,
+    productName: product.name,
+    quantity: replenishQuantity(product),
+    unitPrice: Math.max(0.01, product.costPrice),
+    subtotal: replenishQuantity(product) * Math.max(0.01, product.costPrice),
+  }));
+  const sharedItems = fitItemsToBudget(baseItems, budget);
+  const recommendations: ForecastQuantityRecommendation[] = sharedItems.map((item) => ({
+    productId: item.id.replace(/^forecast-/, ""),
+    quantity: item.quantity,
+  }));
+  const reasons: Partial<Record<DtiSrpTier, string>> = {
+    LOWEST_SRP: "The same demand-led replenishment quantities are priced with the lowest matched DTI SRP to keep the plan as lean as possible.",
+    BALANCED: "The same demand-led replenishment quantities are priced with the prevailing or average matched DTI SRP for a practical middle estimate.",
+    PREMIUM: "The same demand-led replenishment quantities are priced with the highest matched DTI SRP to show the higher acquisition-cost case.",
+  };
+  return buildDtiForecastCards(forecastProducts, recommendations, reasons);
 }
 
 export function generateVmiCards(state: AppState): PlannerCard[] {
@@ -43,13 +55,13 @@ export function generateVmiCards(state: AppState): PlannerCard[] {
     .map((vendor) => {
       const items: PlannerItem[] = [];
       for (const need of needs) {
-        const vendorProduct = vendor.products.find((candidate) => candidate.name === need.name && candidate.isVisibleToConnectedBusinesses && (candidate.vendorAvailableQuantity || candidate.stock) > 0);
+        const vendorProduct = vendor.products.find((candidate) => candidate.name === need.name && candidate.isVisibleToConnectedBusinesses && candidate.vendorAvailableQuantity > 0);
         if (!vendorProduct) continue;
-        const quantity = Math.min(vendorProduct.vendorAvailableQuantity || vendorProduct.stock, Math.max(2, need.lowStockThreshold * 2 - need.stock));
+        const quantity = Math.min(vendorProduct.vendorAvailableQuantity, Math.max(2, need.lowStockThreshold * 2 - need.stock));
         const unitPrice = vendorProduct.vendorPrice ?? vendorProduct.costPrice;
         items.push({ id: `vmi-${vendor.id}-${need.id}`, productName: need.name, quantity, unitPrice, subtotal: quantity * unitPrice, supplierName: vendor.businessName });
       }
-      return { vendor, items: fitItemsToBudget(items, availableBusinessFunds(state)) };
+      return { vendor, items: fitItemsToBudget(items, availableBusinessPurchasingFunds(state)) };
     })
     .filter(({ items }) => items.length > 0)
     .map(({ vendor, items }) => ({
@@ -65,20 +77,32 @@ export function generateVmiCards(state: AppState): PlannerCard[] {
     }));
 }
 
-export function generateAdaptiveSplit(state: AppState) {
+export function generateAdaptiveSplit(state: AppState, personalPercentOverride?: number) {
   const sales = todaySales(state);
-  const estimatedProfit = Math.round(sales * 0.42);
+  const revenueBySource = todaySalesByPaymentMethod(state);
+  const estimatedRevenue = revenueBySource.CASH + revenueBySource.GCASH || sales;
   const lowStockCount = lowStockProducts(state.products).length;
-  const personalPercent = lowStockCount >= 2 ? 30 : 45;
+  const recommendedPersonalPercent = lowStockCount >= 2 ? 30 : 45;
+  const personalPercent = Math.max(0, Math.min(80, personalPercentOverride ?? recommendedPersonalPercent));
   const businessPercent = 100 - personalPercent;
+  const personalAmount = Math.round(estimatedRevenue * personalPercent / 100);
+  const sourceRevenueTotal = revenueBySource.CASH + revenueBySource.GCASH;
+  const cashShare = sourceRevenueTotal > 0 ? revenueBySource.CASH / sourceRevenueTotal : 0;
+  const cashPersonalAmount = Math.round(personalAmount * cashShare);
+  const gcashPersonalAmount = personalAmount - cashPersonalAmount;
   return {
-    estimatedProfit,
+    estimatedRevenue,
+    revenueBySource,
     personalPercent,
     businessPercent,
-    personalAmount: Math.round(estimatedProfit * personalPercent / 100),
-    businessAmount: Math.round(estimatedProfit * businessPercent / 100),
+    personalAmount,
+    businessAmount: estimatedRevenue - personalAmount,
+    cashPersonalAmount,
+    cashBusinessAmount: Math.max(0, revenueBySource.CASH - cashPersonalAmount),
+    gcashPersonalAmount,
+    gcashBusinessAmount: Math.max(0, revenueBySource.GCASH - gcashPersonalAmount),
     reason: lowStockCount >= 2
-      ? `Inventory is running low on ${lowStockCount} items and demand is expected to stay active tomorrow. Keep more profit in Business Funds for restocking.`
+      ? `Inventory is running low on ${lowStockCount} items and demand is expected to stay active tomorrow. Keep more revenue in Business Funds for restocking.`
       : "Sales are steady. This split gives you a personal cash-out while preserving a healthy operating buffer.",
   };
 }
@@ -94,6 +118,6 @@ export function generateRadarSummary(state: AppState) {
 }
 
 export function plannerDataLabel(state: AppState) {
-  const funds = availableBusinessFunds(state);
-  return `${peso(funds)} available for the next plan`;
+  const funds = availableBusinessPurchasingFunds(state);
+  return `${peso(funds)} combined funds available for the next plan`;
 }

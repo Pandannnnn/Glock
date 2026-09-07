@@ -1,10 +1,18 @@
-import type { AppState, Product, Transaction } from "@/lib/types";
+import type { AppState, PaymentMethod, Product, Transaction } from "@/lib/types";
 
 export const peso = (amount: number) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
     currency: "PHP",
     maximumFractionDigits: 0,
+  }).format(amount);
+
+export const pesoPrecise = (amount: number) =>
+  new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 
 export const numberFormat = (amount: number) =>
@@ -22,14 +30,46 @@ export const timeOnly = (date: string | Date) =>
 export const availableBusinessFunds = (state: AppState) =>
   Math.max(0, state.merchant.businessFunds - state.merchant.reservedBusinessFunds);
 
+export const availableCashFunds = (state: AppState) =>
+  Math.max(0, (state.merchant.cashOnHand ?? 0) - (state.merchant.reservedCashFunds ?? 0));
+
+export const availableBusinessPurchasingFunds = (state: AppState) =>
+  availableBusinessFunds(state) + availableCashFunds(state);
+
+export const transactionPaymentMethod = (transaction: Transaction): PaymentMethod => transaction.paymentMethod ?? "GCASH";
+
+export const paymentMethodLabel = (method: PaymentMethod) => method === "CASH" ? "Cash" : "GCash";
+
 export const paidTransactions = (state: AppState) =>
   state.transactions.filter((transaction) => transaction.paymentStatus === "PAID");
 
-export const todaySales = (state: AppState) => {
+export const transactionProfit = (state: AppState, transaction: Transaction) => {
+  if (typeof transaction.profitAmount === "number") return transaction.profitAmount;
+  return transaction.items.reduce((sum, item) => {
+    const product = item.productId ? state.products.find((candidate) => candidate.id === item.productId) : undefined;
+    return sum + (product ? item.subtotal - product.costPrice * item.quantity : 0);
+  }, 0);
+};
+
+export const todayPaidTransactions = (state: AppState) => {
   const today = new Date().toDateString();
-  return paidTransactions(state)
-    .filter((transaction) => new Date(transaction.paidAt ?? transaction.createdAt).toDateString() === today)
-    .reduce((sum, transaction) => sum + transaction.totalAmount, 0);
+  return paidTransactions(state).filter((transaction) => new Date(transaction.paidAt ?? transaction.createdAt).toDateString() === today);
+};
+
+export const todaySalesByPaymentMethod = (state: AppState) => todayPaidTransactions(state).reduce<Record<PaymentMethod, number>>((result, transaction) => {
+  const method = transactionPaymentMethod(transaction);
+  result[method] += transaction.totalAmount;
+  return result;
+}, { GCASH: 0, CASH: 0 });
+
+export const todayProfitByPaymentMethod = (state: AppState) => todayPaidTransactions(state).reduce<Record<PaymentMethod, number>>((result, transaction) => {
+  const method = transactionPaymentMethod(transaction);
+  result[method] += transactionProfit(state, transaction);
+  return result;
+}, { GCASH: 0, CASH: 0 });
+
+export const todaySales = (state: AppState) => {
+  return todayPaidTransactions(state).reduce((sum, transaction) => sum + transaction.totalAmount, 0);
 };
 
 export const weeklySales = (state: AppState) => {
