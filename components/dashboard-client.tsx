@@ -84,6 +84,49 @@ function useOptionalAiText(prompt: string, fallback: string) {
   return text;
 }
 
+type ForecastRequest = {
+  products: Array<{
+    id: string;
+    name: string;
+    category: string;
+    subcategory: string;
+    stock: number;
+    costPrice: number;
+    sellingPrice: number;
+    lowStockThreshold: number;
+    recentUnitsSold: number;
+  }>;
+  availableBusinessFunds: number;
+  salesSummary: { today: number; last7Days: number; daysOfHistory: number };
+};
+
+type ForecastApiResponse = { mode?: "gemini" | "fallback"; cards?: PlannerCard[] };
+
+function useGeminiForecastCards(request: ForecastRequest, fallbackCards: PlannerCard[]) {
+  const [result, setResult] = useState<{ cards: PlannerCard[]; mode: "gemini" | "fallback"; loading: boolean }>({ cards: fallbackCards, mode: "fallback", loading: true });
+
+  useEffect(() => {
+    let active = true;
+    setResult({ cards: fallbackCards, mode: "fallback", loading: true });
+    fetch("/api/ai/forecast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) })
+      .then((response) => {
+        if (!response.ok) throw new Error("Forecast request failed");
+        return response.json() as Promise<ForecastApiResponse>;
+      })
+      .then((data) => {
+        if (!active) return;
+        const useGeminiCards = data.mode === "gemini" && Array.isArray(data.cards) && data.cards.length > 0;
+        setResult({ cards: useGeminiCards ? data.cards ?? fallbackCards : fallbackCards, mode: useGeminiCards ? "gemini" : "fallback", loading: false });
+      })
+      .catch(() => {
+        if (active) setResult({ cards: fallbackCards, mode: "fallback", loading: false });
+      });
+    return () => { active = false; };
+  }, [fallbackCards, request]);
+
+  return result;
+}
+
 export function DashboardClient() {
   const { state, hydrated, updateState } = useDemoStore();
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
@@ -182,15 +225,45 @@ function ProductEditor({ form, setForm, editing, onSave, onCancel }: { form: Pro
 
 function PlannerTab({ state, updateState, showNotice }: { state: AppState; updateState: (updater: AppState | ((current: AppState) => AppState)) => void; showNotice: (message: string, tone?: Notice["tone"]) => void }) {
   const [personalPercent, setPersonalPercent] = useState(30);
-  const generatedCards = useMemo(() => [...generateForecastCards(state), ...generateVmiCards(state)], [state]);
+  const fallbackForecastCards = useMemo(() => generateForecastCards(state), [state]);
+  const forecastRequest = useMemo<ForecastRequest>(() => {
+    const recentUnitsSold = state.transactions.reduce<Record<string, number>>((result, transaction) => {
+      if (transaction.paymentStatus !== "PAID") return result;
+      transaction.items.forEach((item) => {
+        if (item.productId) result[item.productId] = (result[item.productId] ?? 0) + item.quantity;
+      });
+      return result;
+    }, {});
+    return {
+      products: state.products.filter((product) => product.planningMethod === "FORECAST_AI").map((product) => ({
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        subcategory: product.subcategory,
+        stock: product.stock,
+        costPrice: product.costPrice,
+        sellingPrice: product.sellingPrice,
+        lowStockThreshold: product.lowStockThreshold,
+        recentUnitsSold: recentUnitsSold[product.id] ?? 0,
+      })),
+      availableBusinessFunds: availableBusinessFunds(state),
+      salesSummary: { today: todaySales(state), last7Days: weeklySales(state), daysOfHistory: distinctSalesDays(state) },
+    };
+  }, [state]);
+  const { cards: aiForecastCards, mode: forecastMode, loading: forecastLoading } = useGeminiForecastCards(forecastRequest, fallbackForecastCards);
+  const vmiCards = useMemo(() => generateVmiCards(state), [state]);
+  const generatedCards = useMemo(() => [...aiForecastCards, ...vmiCards], [aiForecastCards, vmiCards]);
   const [cards, setCards] = useState<PlannerCard[]>(generatedCards);
   const [selectedForecastId, setSelectedForecastId] = useState(generatedCards.find((card) => card.source === "FORECAST_AI")?.id ?? "");
-  useEffect(() => { setCards(generatedCards); if (!generatedCards.some((card) => card.id === selectedForecastId && card.source === "FORECAST_AI")) setSelectedForecastId(generatedCards.find((card) => card.source === "FORECAST_AI")?.id ?? ""); }, [generatedCards, selectedForecastId]);
+  useEffect(() => {
+    setCards(generatedCards);
+    setSelectedForecastId((current) => generatedCards.some((card) => card.id === current && card.source === "FORECAST_AI") ? current : generatedCards.find((card) => card.source === "FORECAST_AI")?.id ?? "");
+  }, [generatedCards]);
   const split = generateAdaptiveSplit(state);
   const adaptiveExplanation = useOptionalAiText(`Write one concise, warm merchant-facing explanation for this suggested split: ${split.reason}`, generatePlannerExplanation(state));
   const days = distinctSalesDays(state);
   const forecastCards = cards.filter((card) => card.source === "FORECAST_AI");
-  const vmiCards = cards.filter((card) => card.source === "VMI");
+  const currentVmiCards = cards.filter((card) => card.source === "VMI");
   const updateItem = (cardId: string, itemId: string, key: "quantity" | "unitPrice", value: number) => setCards((current) => current.map((card) => card.id === cardId ? { ...card, items: card.items.map((item) => item.id === itemId ? { ...item, [key]: Math.max(0, value), subtotal: key === "quantity" ? Math.max(0, value) * item.unitPrice : item.quantity * Math.max(0, value) } : item), totalCost: card.items.reduce((sum, item) => sum + (item.id === itemId ? (key === "quantity" ? Math.max(0, value) * item.unitPrice : item.quantity * Math.max(0, value)) : item.subtotal), 0) } : card));
   const confirmCard = (card: PlannerCard) => {
     const total = card.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -211,8 +284,8 @@ function PlannerTab({ state, updateState, showNotice }: { state: AppState; updat
 
   return <div className="space-y-7"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><SectionTitle eyebrow="Planning studio" title="Planner" description="From today’s margin to tomorrow’s shelf." action={<Badge tone="green"><CheckCircle2 size={13} /> {plannerDataLabel(state)}</Badge>} /><div className="text-xs font-bold text-slate-400">{days} days of simulated sales history</div></div>
     <section className="surface overflow-hidden"><div className="border-b border-line bg-gradient-to-r from-violet-50 to-blue-50 p-5 sm:p-6"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div className="eyebrow text-violet-600">Adaptive Split</div><h2 className="mt-1 text-2xl font-black tracking-tight">Give today’s profit a job.</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-muted">GLock suggests a split between Personal Funds and Business Funds based on today’s sales and stock health.</p></div><Badge tone="purple"><Sparkles size={13} /> Demo AI</Badge></div></div><div className="grid gap-6 p-5 sm:p-6 lg:grid-cols-[0.9fr_1.1fr] lg:items-center"><div><div className="text-sm font-bold text-muted">Estimated today’s profit</div><div className="mt-1 text-4xl font-black tracking-tight text-navy">{peso(split.estimatedProfit)}</div><div className="mt-5 flex h-4 overflow-hidden rounded-full bg-slate-100"><div className="bg-violet-500 transition-all" style={{ width: `${personalPercent}%` }} /><div className="bg-brand transition-all" style={{ width: `${100 - personalPercent}%` }} /></div><div className="mt-3 flex justify-between text-xs font-bold"><span className="text-violet-700">{personalPercent}% Personal</span><span className="text-brand">{100 - personalPercent}% Business</span></div></div><div><div className="grid grid-cols-2 gap-3"><div className="rounded-2xl bg-violet-50 p-4"><div className="text-xs font-bold text-violet-700">Personal Funds</div><div className="mt-2 text-xl font-black">{peso(Math.round(split.estimatedProfit * personalPercent / 100))}</div></div><div className="rounded-2xl bg-blue-50 p-4"><div className="text-xs font-bold text-brand">Business Funds</div><div className="mt-2 text-xl font-black">{peso(Math.round(split.estimatedProfit * (100 - personalPercent) / 100))}</div></div></div><label className="mt-5 block text-xs font-bold text-slate-500">Adjust your split <input type="range" min="0" max="80" step="5" value={personalPercent} onChange={(event) => setPersonalPercent(Number(event.target.value))} className="mt-3 w-full accent-brand" /></label><p className="mt-4 text-sm leading-6 text-muted">{adaptiveExplanation}</p><div className="mt-4 flex flex-wrap gap-2"><button className="primary-btn" onClick={acceptSplit}><Check size={16} /> Accept split</button><button className="secondary-btn" onClick={() => showNotice("Split adjusted. Review the amounts, then accept when ready.", "info")}><Edit3 size={15} /> Modify</button><button className="ghost-btn" onClick={() => showNotice("Split skipped for this demo day.", "info")}>Reject</button></div></div></div></section>
-    <section><SectionTitle eyebrow="Buying suggestions" title="Forecast AI" description="Pick one plan for the next restock run. You can tune every line before confirming." action={<Badge tone="purple">3 budget levels</Badge>} /><div className="grid gap-4 xl:grid-cols-3">{forecastCards.map((card) => <PlannerCardView key={card.id} card={card} selected={selectedForecastId === card.id} onSelect={() => setSelectedForecastId(card.id)} onUpdate={updateItem} onConfirm={() => confirmCard(card)} disabled={selectedForecastId !== card.id} />)}</div></section>
-    <section><SectionTitle eyebrow="Merchant-to-merchant supply" title="VMI vendor cards" description="Approved connections with visible inventory, matched to your low-stock VMI items." action={<Badge tone="green">{vmiCards.length} matches</Badge>} />{vmiCards.length ? <div className="grid gap-4 lg:grid-cols-2">{vmiCards.map((card) => <PlannerCardView key={card.id} card={card} onUpdate={updateItem} onConfirm={() => confirmCard(card)} />)}</div> : <div className="rounded-3xl border border-dashed border-line bg-slate-50 p-7 text-center text-sm text-muted">No approved VMI match yet. Add a connected supplier or mark more inventory as VMI.</div>}</section>
+    <section><SectionTitle eyebrow="Buying suggestions" title="Forecast AI" description="Pick one plan for the next restock run. You can tune every line before confirming." action={<div className="flex items-center gap-2"><Badge tone={forecastLoading || forecastMode === "gemini" ? "purple" : "slate"}>{forecastLoading ? "Generating…" : forecastMode === "gemini" ? "Gemini AI" : "Demo AI"}</Badge><Badge tone="purple">3 budget levels</Badge></div>} /><div className="grid gap-4 xl:grid-cols-3">{forecastCards.map((card) => <PlannerCardView key={card.id} card={card} selected={selectedForecastId === card.id} onSelect={() => setSelectedForecastId(card.id)} onUpdate={updateItem} onConfirm={() => confirmCard(card)} disabled={selectedForecastId !== card.id} />)}</div></section>
+    <section><SectionTitle eyebrow="Merchant-to-merchant supply" title="VMI vendor cards" description="Approved connections with visible inventory, matched to your low-stock VMI items." action={<Badge tone="green">{currentVmiCards.length} matches</Badge>} />{currentVmiCards.length ? <div className="grid gap-4 lg:grid-cols-2">{currentVmiCards.map((card) => <PlannerCardView key={card.id} card={card} onUpdate={updateItem} onConfirm={() => confirmCard(card)} />)}</div> : <div className="rounded-3xl border border-dashed border-line bg-slate-50 p-7 text-center text-sm text-muted">No approved VMI match yet. Add a connected supplier or mark more inventory as VMI.</div>}</section>
     <section className="grid gap-4 md:grid-cols-3"><div className="soft-surface p-5"><div className="flex items-center gap-2 text-amber-600"><AlertTriangle size={18} /><span className="text-xs font-black uppercase tracking-[0.12em]">If funds are tight</span></div><h3 className="mt-3 font-black">Keep the shelf moving</h3><p className="mt-1 text-sm leading-6 text-muted">Choose a lower SRP card, buy fewer units, or move a little money from Personal Funds.</p></div><div className="soft-surface p-5"><div className="flex items-center gap-2 text-brand"><ArrowUpRight size={18} /><span className="text-xs font-black uppercase tracking-[0.12em]">Simulated transfer</span></div><h3 className="mt-3 font-black">Transfer from Personal</h3><button className="ghost-btn mt-3 px-0 text-brand" onClick={() => showNotice("A simulated transfer flow would open here in the next iteration.", "info")}>Explore option <ChevronRight size={15} /></button></div><div className="soft-surface p-5"><div className="flex items-center gap-2 text-violet-600"><CircleDollarSign size={18} /><span className="text-xs font-black uppercase tracking-[0.12em]">GLoan</span></div><h3 className="mt-3 font-black">Need a little runway?</h3><p className="mt-1 text-sm leading-6 text-muted">A clearly marked simulated option for the hackathon demo — no real credit decision.</p></div></section>
   </div>;
 }
