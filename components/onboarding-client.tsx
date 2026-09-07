@@ -61,11 +61,11 @@ export function OnboardingClient() {
     if (!businessName.trim() || !ownerName.trim()) { setError("Add a business name and owner name to continue."); setStep(1); return; }
     if (!validProducts.length) { setError("Add at least one product or upload a CSV before continuing."); setStep(2); return; }
     const now = new Date().toISOString();
-    const merchantId = state.merchant.id || makeId("merchant");
+    const merchantId = state.merchant.id;
     const mapped: Product[] = validProducts.map((product) => ({ ...product, id: makeId("product"), merchantId, isVisibleToConnectedBusinesses: product.planningMethod === "VMI", vendorAvailableQuantity: 0, createdAt: now, updatedAt: now }));
     updateState((current) => ({
       ...current,
-      merchant: { ...current.merchant, id: merchantId, businessName: businessName.trim(), ownerName: ownerName.trim(), personalFunds: Number(personalFunds) || 0, businessFunds: Number(businessFunds) || 0, reservedBusinessFunds: 0, glockEnabled: true, updatedAt: now },
+      merchant: { ...current.merchant, id: merchantId, businessName: businessName.trim(), ownerName: ownerName.trim(), personalFunds: Number(personalFunds) || 0, personalCashOnHand: 0, businessFunds: Number(businessFunds) || 0, reservedBusinessFunds: 0, cashOnHand: 0, reservedCashFunds: 0, glockEnabled: true, updatedAt: now },
       products: mapped,
       transactions: [],
       reservedPlans: [],
