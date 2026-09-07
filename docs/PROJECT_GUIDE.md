@@ -10,7 +10,7 @@ The current demo merchant is a mixed mini-mart. Seed examples also cover frozen 
 
 The app is safe for a hackathon demo only. It does not implement:
 
-- Real GCash API access, payments, banking, or authentication
+- Real GCash API access, payments, banking, or production authentication
 - Real credit or GLoan decisions
 - Real merchant settlement or customer tracking
 - Customer names, phone numbers, account numbers, or private revenue data
@@ -37,6 +37,7 @@ lib/types.ts         Shared application types
 lib/demo-data.ts     Deterministic seeded browser state
 lib/demo-store.tsx   localStorage-backed React store
 lib/ai.ts            Forecast, VMI, split, and GRadar fallback logic
+lib/dti-srp.ts       Versioned DTI SRP references and shared Forecast AI pricing logic
 lib/csv.ts           Product CSV parser
 prisma/schema.prisma SQLite data model
 prisma/seed.ts       Database seed data
@@ -93,15 +94,27 @@ The browser seed starts with GLock enabled, multiple vendors, both planning meth
 
 1. `/` shows the simulated GCash home wallet.
 2. `/view-more` shows services and the GLock entry point.
-3. `/glock/onboarding` collects business details and products, including CSV import and planning method selection.
-4. `/glock/dashboard` contains Overview, Products, Planner, Connected Businesses, and GRadar tabs.
-5. Overview creates a mock transaction QR and a compact receipt.
-6. Products supports search, filters, CRUD, CSV import, and partner visibility.
-7. Planner supports the seven-day gate, Adaptive Split, Forecast AI cards, VMI vendor cards, editing, and reserved funds.
-8. Connected Businesses handles seeded vendors, approval/rejection, relationships, and shared inventory.
-9. GRadar shows aggregated product demand, supply-vs-demand, time patterns, and privacy copy.
+3. `/glock/login` provides prototype-only hardcoded access to the seeded Kape Kubo and Kuya Mark workspaces.
+4. `/glock/onboarding` collects business details and products, including CSV import and planning method selection.
+5. `/glock/dashboard` contains Overview, Products, Planner, Connected Businesses, and GRadar tabs.
+6. Overview creates a mock transaction QR and a compact receipt.
+7. Products supports search, filters, CRUD, CSV import, and partner visibility.
+8. Planner supports the seven-day gate, Adaptive Split, Forecast AI cards, VMI vendor cards, editing, and reserved funds.
+9. Connected Businesses handles seeded vendors, approval/rejection, relationships, and shared inventory.
+10. GRadar shows aggregated product demand, supply-vs-demand, time patterns, and privacy copy.
 
-## 10. Transaction simulation logic
+## 10. Prototype authentication and shared reservations
+
+The login layer is deliberately simple and client-only. The credentials are defined in `lib/auth.tsx`, sessions are persisted under `glock-demo-auth-v1`, and the current account selects one of two browser state snapshots:
+
+| Account | Username | Password |
+| --- | --- | --- |
+| Kape Kubo Mini Mart | `maya` | `maya123` |
+| Kuya Mark Frozen Goods | `kuya.mark` | `kuya123` |
+
+The workspace store persists both account snapshots and a shared reservation list under `glock-demo-workspace-v2`. When Kape Kubo confirms a VMI card for Kuya Mark, the buyer's Business GCash/cash funds are reserved, Kuya Mark's available vendor quantity decreases, and a pending reservation appears in the **Reservations** dropdown inside **Connected Businesses**. Fulfilling or cancelling the reservation applies the corresponding simulated status, inventory, and fund changes across both account snapshots. This is a demo simulation, not an authorization boundary.
+
+## 11. Transaction simulation logic
 
 When the user clicks **Simulate Payment**:
 
@@ -112,29 +125,31 @@ When the user clicks **Simulate Payment**:
 
 The QR value is a `glock://` mock value. It is not a payment credential.
 
-## 11. Planner and reserved funds logic
+## 12. Planner and reserved funds logic
 
 The canonical formula is:
 
 ```ts
 availableBusinessFunds = businessFunds - reservedBusinessFunds
+availableCashFunds = cashOnHand - reservedCashFunds
+availableBusinessPurchasingFunds = availableBusinessFunds + availableCashFunds
 ```
 
-Forecast and VMI cards are generated from low-stock products, planning method, approved vendor relationships, visible vendor inventory, and cost data. Before a card is confirmed, its edited total is compared with available Business Funds. If it is too high, confirmation is blocked and the UI suggests a cheaper card, fewer items, or a simulated transfer.
+Forecast and VMI cards are generated from low-stock products, planning method, approved vendor relationships, visible vendor inventory, and cost data. Forecast AI first creates one shared item-and-quantity recommendation from demand and inventory signals. That recommendation is rendered as Tipid Plan, Balanced Plan, and High Availability Plan; only the price tier changes. Matched products use the lowest, prevailing/average, or highest DTI-researched SRP as the estimated acquisition cost, so each card's line totals, total cost, and Cash/GCash funding breakdown are recalculated independently. If a product has no validated SRP match, the UI labels the product-cost fallback explicitly. Before a card is confirmed, its edited total is compared with the available Business GCash plus Business cash. If it is too high, confirmation is blocked and the UI suggests a lower-cost plan, fewer items, or a simulated transfer.
 
 On confirmation, a `ReservedPlan`-shaped record is added to browser state and `reservedBusinessFunds` increases by the card total. Available Business Funds therefore decreases without removing the underlying business balance.
 
-Adaptive Split estimates a rule-based profit amount and lets the user adjust the Personal/Business percentage. Accepting it moves the personal portion from Business Funds to Personal Funds.
+Adaptive Split estimates the day's total revenue, applies the selected Personal/Business percentage to that revenue, and allocates the result back across Cash and GCash payment sources. Accepting it moves the personal portion from Business Funds to Personal Funds.
 
-## 12. Connected Businesses and VMI
+## 13. Connected Businesses and VMI
 
 VMI recommendations only use vendors with `APPROVED` status and `SUPPLIER` or `BOTH` relationships. A vendor product must be visible and have available quantity. The current merchant can share products, set a partner quantity, and set a partner price. The entire relationship is simulated and contains no private customer data.
 
-## 13. GRadar privacy rules
+## 14. GRadar privacy rules
 
 GRadar uses seeded, anonymized merchant-type rows. It may show product names, categories, quantities, time windows, aggregated trends, and directional supply/demand patterns. It must not show customer identity, phone numbers, account numbers, exact merchant revenue, or private merchant profiles.
 
-## 14. Gemini and fallback AI behavior
+## 15. Gemini and fallback AI behavior
 
 `lib/ai.ts` contains the deterministic helpers:
 
@@ -146,11 +161,13 @@ GRadar uses seeded, anonymized merchant-type rows. It may show product names, ca
 
 `/api/ai` calls Gemini only when `GEMINI_API_KEY` is present. The Adaptive Split and GRadar copy can request optional server-generated text. If the key is missing, the route returns the supplied fallback and the local forecast/VMI helpers remain deterministic. No screen should depend on Gemini being available.
 
-## 15. Known limitations
+The Forecast AI route asks Gemini for one `baseItems` array and three short reasons. It does not accept AI-provided scenario prices or scenario-specific quantities. `lib/dti-srp.ts` applies the local DTI reference tier after the response is validated, keeping the three cards aligned.
+
+## 16. Known limitations
 
 See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the current risk list. The most important limitation is that the working UI store and Prisma seed path are separate. This is deliberate for demo reliability, but a production version should connect UI actions to server-side persistence.
 
-## 16. Future improvements
+## 17. Future improvements
 
 In priority order:
 
@@ -161,7 +178,7 @@ In priority order:
 5. Add role-based merchant access and audited vendor consent flows.
 6. Add richer historical sales ingestion and validated AI prompts.
 
-## 17. Contributor checklist
+## 18. Contributor checklist
 
 - Run `npm install`.
 - Run `npm run db:generate`, `npm run db:push`, and `npm run db:seed` when schema or seed files change.
