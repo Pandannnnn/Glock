@@ -1,0 +1,29 @@
+{
+  "bridgeVersion": "3.6",
+  "kind": "google-docs-trusted-read-receipt",
+  "status": "complete",
+  "target": {
+    "documentId": "1tsN9vhFIDkBLBZmWpg4Dmfg8vEisTrLEhp0mYY-Pj6Q",
+    "title": "HACKATHON IMPORTANT DOCS",
+    "revisionId": "ANLCKQntHoMDxMSWlJVS5zKB6W7N8T6jexTE9ZuDS6Jo_yUxylhpbYjQoNMzCdlfvhS7LvKpTwfQmZe0ae5JMllvaEObgK4nd4dUId5gkjQ",
+    "documentUrl": "https://docs.google.com/document/d/1tsN9vhFIDkBLBZmWpg4Dmfg8vEisTrLEhp0mYY-Pj6Q",
+    "selectedTabId": null
+  },
+  "dropdownMetadata": {
+    "status": "unavailable",
+    "resolvedTool": null,
+    "authoritative": false,
+    "count": 0
+  },
+  "controlAwareness": {
+    "hasProtectedControls": false,
+    "authoritativeDropdownCount": 0,
+    "opaqueControlCount": 0,
+    "affectedParagraphCount": 0,
+    "nativeElementCounts": {},
+    "preservationRequired": false,
+    "recommendedBehavior": "No protected controls were detected in the scanned scope."
+  },
+  "warnings": [],
+  "error": null
+}
