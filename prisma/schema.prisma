@@ -12,8 +12,11 @@ model Merchant {
   businessName         String
   ownerName            String
   personalFunds        Float               @default(0)
+  personalCashOnHand   Float               @default(0)
   businessFunds        Float               @default(0)
   reservedBusinessFunds Float              @default(0)
+  cashOnHand           Float               @default(0)
+  reservedCashFunds    Float               @default(0)
   glockEnabled         Boolean             @default(false)
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
@@ -38,6 +41,7 @@ model Product {
   isVisibleToConnectedBusinesses Boolean    @default(false)
   vendorAvailableQuantity    Int            @default(0)
   vendorPrice                Float?
+  dtiSrpProfileKey           String?
   createdAt                  DateTime       @default(now())
   updatedAt                  DateTime       @updatedAt
   items                      TransactionItem[]
@@ -48,8 +52,12 @@ model Transaction {
   merchantId    String
   merchant      Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   totalAmount   Float
+  paymentMethod String            @default("GCASH")
   paymentStatus String            @default("PENDING")
   receiptCode   String            @unique
+  cashReceived  Float?
+  changeGiven   Float?
+  profitAmount  Float?
   paidAt        DateTime?
   createdAt     DateTime          @default(now())
   items         TransactionItem[]

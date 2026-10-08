@@ -1,0 +1,57 @@
+{
+  "bridgeVersion": "3.6",
+  "kind": "google-docs-trusted-read",
+  "status": "complete",
+  "outputDir": "/home/pandan/Glock/trusted-read-20260907-01",
+  "target": {
+    "documentId": "1tsN9vhFIDkBLBZmWpg4Dmfg8vEisTrLEhp0mYY-Pj6Q",
+    "title": "HACKATHON IMPORTANT DOCS",
+    "revisionId": "ANLCKQntHoMDxMSWlJVS5zKB6W7N8T6jexTE9ZuDS6Jo_yUxylhpbYjQoNMzCdlfvhS7LvKpTwfQmZe0ae5JMllvaEObgK4nd4dUId5gkjQ",
+    "documentUrl": "https://docs.google.com/document/d/1tsN9vhFIDkBLBZmWpg4Dmfg8vEisTrLEhp0mYY-Pj6Q",
+    "selectedTabId": null
+  },
+  "dropdownMetadata": {
+    "status": "unavailable",
+    "resolvedTool": null,
+    "authoritative": false,
+    "count": 0
+  },
+  "controlAwareness": {
+    "hasProtectedControls": false,
+    "authoritativeDropdownCount": 0,
+    "opaqueControlCount": 0,
+    "affectedParagraphCount": 0,
+    "nativeElementCounts": {},
+    "preservationRequired": false,
+    "recommendedBehavior": "No protected controls were detected in the scanned scope."
+  },
+  "warnings": [],
+  "files": {
+    "document_result": {
+      "path": "/home/pandan/Glock/trusted-read-20260907-01/document-result.json",
+      "bytes": 98663,
+      "sha256": "0f15529910e0d51a3e87e7ac4d9b47a69c4363acb24ebe4410f2b8b2ba52fac5"
+    },
+    "control_inventory": {
+      "path": "/home/pandan/Glock/trusted-read-20260907-01/control-inventory.json",
+      "bytes": 1077,
+      "sha256": "243446814e63a07f0d89bd4b3c705f1854de824e63ace1ee71c2de07cdff4335"
+    },
+    "document_outline": {
+      "path": "/home/pandan/Glock/trusted-read-20260907-01/document-outline.json",
+      "bytes": 38504,
+      "sha256": "5f437e41545eeac83bb402cd5dfeb6e0e182e5276ce770d5cfb97a1c222a2d5d"
+    },
+    "document_text": {
+      "path": "/home/pandan/Glock/trusted-read-20260907-01/document-text.md",
+      "bytes": 11089,
+      "sha256": "91e409710e3d44197e74afe540ea3b4b50e33a5c0d094d0a4d7ee8959add0233"
+    },
+    "receipt": {
+      "path": "/home/pandan/Glock/trusted-read-20260907-01/receipt.json",
+      "bytes": 960,
+      "sha256": "861fd27b71bea655502952467dba06ba9a7f7c26157b67bd0cefbd83cbcf7587"
+    }
+  },
+  "error": null
+}

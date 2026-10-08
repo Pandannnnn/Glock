@@ -1,4 +1,4 @@
-import type { AppState, Product, RadarTransaction, Transaction, Vendor } from "@/lib/types";
+import type { AppState, PaymentMethod, Product, RadarTransaction, Transaction, Vendor } from "@/lib/types";
 
 const iso = (daysAgo: number, hour = 12) => {
   const date = new Date();
@@ -27,16 +27,27 @@ const product = (input: Partial<Product> & Pick<Product, "name" | "category" | "
   updatedAt: input.updatedAt ?? iso(0),
 });
 
-const tx = (index: number, daysAgo: number, items: Array<[string, string, number, number]>) : Transaction => ({
-  id: id("transaction", index),
-  merchantId: "merchant-main",
-  totalAmount: items.reduce((sum, [, , quantity, unitPrice]) => sum + quantity * unitPrice, 0),
-  paymentStatus: "PAID",
-  receiptCode: `GLK-${String(2408 - daysAgo).slice(-2)}-${String(18 - index).padStart(3, "0")}`,
-  paidAt: iso(daysAgo, 12 + (index % 6)),
-  createdAt: iso(daysAgo, 11 + (index % 5)),
-  items: items.map(([productId, productName, quantity, unitPrice], itemIndex) => ({ id: id(`item-${index}`, itemIndex), productId, productName, quantity, unitPrice, subtotal: quantity * unitPrice })),
-});
+const tx = (index: number, daysAgo: number, items: Array<[string, string, number, number]>, paymentMethod: PaymentMethod = index % 2 === 1 ? "CASH" : "GCASH") : Transaction => {
+  const totalAmount = items.reduce((sum, [, , quantity, unitPrice]) => sum + quantity * unitPrice, 0);
+  const profitAmount = items.reduce((sum, [productId, , quantity, unitPrice]) => {
+    const productRecord = mainProducts.find((product) => product.id === productId);
+    return sum + (productRecord ? (unitPrice - productRecord.costPrice) * quantity : 0);
+  }, 0);
+  return {
+    id: id("transaction", index),
+    merchantId: "merchant-main",
+    totalAmount,
+    paymentMethod,
+    paymentStatus: "PAID",
+    receiptCode: `GLK-${String(2408 - daysAgo).slice(-2)}-${String(18 - index).padStart(3, "0")}`,
+    cashReceived: paymentMethod === "CASH" ? totalAmount : undefined,
+    changeGiven: paymentMethod === "CASH" ? 0 : undefined,
+    profitAmount,
+    paidAt: iso(daysAgo, 12 + (index % 6)),
+    createdAt: iso(daysAgo, 11 + (index % 5)),
+    items: items.map(([productId, productName, quantity, unitPrice], itemIndex) => ({ id: id(`item-${index}`, itemIndex), productId, productName, quantity, unitPrice, subtotal: quantity * unitPrice })),
+  };
+};
 
 const vendorProduct = (vendorId: string, input: Partial<Product> & Pick<Product, "name" | "category" | "subcategory">) =>
   product({ ...input, id: input.id ?? `${vendorId}-${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, merchantId: vendorId, planningMethod: "VMI", isVisibleToConnectedBusinesses: true });
@@ -128,7 +139,7 @@ const radarTransactions: RadarTransaction[] = radarRows.map(([area, productName,
 export const createDefaultState = (): AppState => {
   const now = new Date().toISOString();
   return {
-    merchant: { id: "merchant-main", businessName: "Kape Kubo Mini Mart", ownerName: "Maya Santos", personalFunds: 3200, businessFunds: 5000, reservedBusinessFunds: 1200, glockEnabled: true, createdAt: iso(42), updatedAt: now },
+    merchant: { id: "merchant-main", businessName: "Kape Kubo Mini Mart", ownerName: "Maya Santos", personalFunds: 3200, personalCashOnHand: 0, businessFunds: 5000, reservedBusinessFunds: 1200, cashOnHand: 1800, reservedCashFunds: 0, glockEnabled: true, createdAt: iso(42), updatedAt: now },
     products: mainProducts,
     transactions,
     vendors,
@@ -136,5 +147,42 @@ export const createDefaultState = (): AppState => {
     radarTransactions,
     plannerUnlocked: true,
     lastReceiptId: transactions[0].id,
+  };
+};
+
+export const createKuyaMarkState = (): AppState => {
+  const now = new Date().toISOString();
+  const kuyaMarkVendor = vendors.find((vendor) => vendor.id === "vendor-kuya-mark");
+  if (!kuyaMarkVendor) throw new Error("Seed vendor account is missing");
+
+  return {
+    merchant: {
+      id: "vendor-kuya-mark",
+      businessName: "Kuya Mark Frozen Goods",
+      ownerName: "Mark Villanueva",
+      personalFunds: 2800,
+      personalCashOnHand: 450,
+      businessFunds: 4200,
+      reservedBusinessFunds: 0,
+      cashOnHand: 2200,
+      reservedCashFunds: 0,
+      glockEnabled: true,
+      createdAt: iso(42),
+      updatedAt: now,
+    },
+    products: kuyaMarkVendor.products.map((product) => ({ ...product, merchantId: "vendor-kuya-mark", updatedAt: now })),
+    transactions: [],
+    vendors: [{
+      id: "merchant-main",
+      businessName: "Kape Kubo Mini Mart",
+      ownerName: "Maya Santos",
+      status: "APPROVED",
+      relationshipType: "BUYER",
+      createdAt: iso(28),
+      products: [],
+    }],
+    reservedPlans: [],
+    radarTransactions: radarTransactions.map((row) => ({ ...row })),
+    plannerUnlocked: true,
   };
 };

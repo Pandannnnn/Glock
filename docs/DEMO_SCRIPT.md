@@ -16,6 +16,8 @@ Click **Explore more services** or **GCash home**, then open `/view-more`.
 
 Say: "A merchant discovers GLock from View More. This seeded demo already has a merchant, so I can open the workspace. The Reconfigure merchant link is the onboarding path."
 
+If the dashboard opens at the sign-in screen, use the seeded Kape Kubo account: `maya` / `maya123`. The second account is `kuya.mark` / `kuya123`.
+
 ### 0:45-1:30 - Prove the cashier loop
 
 Click **Open GLock**, stay on **Overview**, select Chicken Fillet and Iced Coffee, then click **Generate mock QR** and **Simulate Payment**.
@@ -26,15 +28,24 @@ Point to the updated funds, receipt code, paid status, and low-stock list.
 
 ### 1:30-2:20 - Prove planning and funds discipline
 
-Open **Planner**. Adjust the Adaptive Split slider, then show Budget, Balanced, Premium, and VMI cards. Edit a quantity if useful and confirm one plan.
+Open **Planner**. Adjust the Adaptive Split slider, then show Tipid Plan, Balanced Plan, High Availability Plan, and VMI cards. Edit a quantity if useful and confirm one plan.
 
-Say: "GLock turns low-stock signals into choices. Forecast AI offers three budget levels; VMI points to approved merchant partners. Confirming a plan reserves Business Funds and reduces Available Funds. The app blocks plans that exceed the available balance."
+Say: "GLock turns low-stock and demand signals into one replenishment recommendation. Forecast AI shows the same items and quantities under three DTI SRP acquisition-cost views; VMI points to approved merchant partners. Each card shows its Cash and GCash funding split. Confirming a plan reserves Business Funds and reduces Available Funds. The app blocks plans that exceed the available balance."
 
 ### 2:20-3:00 - Prove network and privacy
 
 Open **Connected Businesses**, show approved vendors and visible inventory. Then open **GRadar**.
 
 Say: "Connected Businesses makes the supply relationship explicit. GRadar only shows aggregated product, quantity, category, and time signals. It never exposes customer identity, phone numbers, account numbers, or exact merchant revenue."
+
+### Optional account-to-account handoff
+
+1. Sign in as `maya` / `maya123` and open Planner.
+2. Confirm a VMI card supplied by **Kuya Mark Frozen Goods**.
+3. Use **Switch account**, then sign in as `kuya.mark` / `kuya123`.
+4. Open **Connected Businesses**, expand the closed **Reservations** dropdown, then click **Fulfill** on the pending reservation.
+
+Say: "This is a shared simulation of the merchant handoff: the buyer reserves Business GCash and cash, the supplier sees the order, and fulfillment settles both sides' inventory and funds."
 
 ## 5-minute flow
 

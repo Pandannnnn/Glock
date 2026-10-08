@@ -16,7 +16,7 @@ No blocking bugs were found in the stabilization pass. The following checks pass
 ## Prototype limitations
 
 1. The working browser UI uses `localStorage`; Prisma/SQLite is a valid schema and seed path but is not the runtime source for dashboard actions.
-2. There is no authentication, merchant account isolation, server authorization, or audit trail.
+2. Authentication is intentionally hardcoded and client-only for the demo. There is no production credential storage, server authorization, or audit trail.
 3. The default client snapshot starts with GLock enabled and Planner unlocked to make a judge demo fast. Use **Reconfigure merchant** to show onboarding.
 4. The UI has no automated browser flow or visual regression suite yet.
 5. The dashboard client is intentionally dense because it packs all demo tabs into one route.
@@ -30,6 +30,7 @@ No blocking bugs were found in the stabilization pass. The following checks pass
 - Forecast AI and VMI buying recommendations
 - Gemini output when configured
 - Connected merchant relationships and vendor inventory
+- Prototype account switching and shared reservations
 - GRadar network data
 
 ## Risks before demo day
